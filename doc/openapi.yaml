@@ -1,0 +1,280 @@
+openapi: 3.0.0
+info:
+  title: "Textin NLP信息抽取服务"
+  version: "1.0.0"
+  contact:
+    name: chenran_wang
+    email: chenran_wang@intsig.net
+paths:
+  /ai/service/v1/contents-extract:
+    post:
+      summary: nlp信息抽取服务
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                keys:
+                  type: array
+                  description: 要抽取的key
+                  items:
+                    type: string
+                file:
+                  type: string
+                  description: 要提取的文件的base64字符串，如果提取纯文本，则直接赋值其文本字符串。
+                  example: "平台：TextIn.com"
+                type:
+                  type: string
+                  enum:
+                    - word
+                    - pdf
+                    - image
+                    - string
+                  description: file字段里存放的数据类型
+              required:
+                - "keys"
+                - "file"
+                - "type"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/return_of_base"
+                  - $ref: "#/components/schemas/return_of_customize"
+                  - $ref: "#/components/schemas/return_of_ocr"
+  /ai/service/v1/ocr-data:
+    post:
+      summary: ocr解析，获取文档每一页的图片
+      parameters:
+      - name: type
+        in: query
+        description: 请求体的数据类型
+        required: true
+        schema:
+          type: string
+          enum:
+            - word
+            - pdf
+            - image
+            - string
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              format: binary
+              type: string
+        description: image、word、pdf文件二进制
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: 
+                allOf:
+                  - $ref: "#/components/schemas/return_of_base"
+                  - $ref: "#/components/schemas/return_of_ocr"
+
+
+components:
+  schemas:
+    charsInfo:
+      type: array
+      items:
+        type: object
+        description: |
+          - 字符空间布局信息
+          - 包含所在页面编号、字符、旋转角度、坐标
+        required:
+          - page_index
+          - char
+          - rotation
+          - polygons
+        properties:
+          page_index:
+            type: integer
+            example: 1
+            description: |
+              - 字符所在的页面编号（从1开始）
+          char:
+            type: string
+            example: x
+            description: |
+              - 字符的文本内容
+          rotation:
+            type: integer
+            example: 0
+            description: |
+              - 字符旋转的角度
+            enum: [0, 90, 180, 270]
+          polygons:
+            type: array
+            items:
+              type: integer
+            description: 字符的空间坐标位置，4个点依次为左下x、左下y、右上x和右上y
+            minItems: 0
+            maxItems: 4
+            example: [0, 50, 50, 0]
+    itemCandidates:
+      type: array
+      items:
+        type: object
+        required:
+          - value
+          - score
+          - chars_info
+          - range
+        properties:
+          value:
+            type: string
+            example: 9012
+          score:
+            type: number
+            example: 0.999
+            description: 值属于键的置信度分数
+          range:
+            type: string
+            example: "[0,10]"
+            description: 值在原始输入文本的位置区间，当前仅当输入数据为txt文本时有效
+          chars_info:
+            $ref: "#/components/schemas/charsInfo"
+    return_of_base:
+      type: object
+      required:
+        - code
+        - message
+        - version
+        - duration
+        - result
+      properties:
+        code:
+          type: integer
+          description: |
+            错误码
+            - 200: OK
+            - 40301: 请求参数错误
+            - 40600: 文档解析失败
+            - 90001: 其他错误, 详情见 message for detail
+            - 500: 服务端未知错误
+          enum: [200, 40301, 40600, 90001, 500]
+        message:
+          type: string
+          description: 错误信息
+        version:
+          type: string
+          description: 服务版本号
+          example: v1.0.0
+        duration:
+          type: number
+          format: float
+          description: 单次请求的响应时间（单位为毫秒）
+          example: 456.7
+        result:
+          type: object
+          description: 特定接口的返回结果
+    return_of_ocr:
+      type: object
+      properties:
+        result:
+          type: object
+          properties:
+            pages:
+              type: array
+              items:
+                type: object
+                required:
+                  - index
+                  - angle
+                  - original_angle
+                  - width
+                  - height
+                  - image_bytes
+                  - image_scale
+                  - image_type
+                properties:
+                  index:
+                    type: integer
+                    example: 0
+                    description: |
+                      传入文档的第几页（从0开始）
+                  angle:
+                    type: integer
+                    description: |
+                      接口输出文档的角度，
+                      定义人类阅读文字的方向为文档正向放置，用零度表示，
+                      该字段表示对正置文档进行了顺时针若干角度的旋转。
+                    enum: [0, 90, 180, 270]
+                  original_angle:
+                    type: integer
+                    description: |
+                      接口输入文档的角度，用于记录文档最原始的旋转角度，因为当输入`rotate_image`时，会将image正置，并令`angle=0`
+                    enum: [0, 90, 180, 270]
+                  width:
+                    type: integer
+                    description: 文档的宽度
+                    example: 595
+                  height:
+                    type: integer
+                    description: 文档的高度
+                    example: 842
+                  image_bytes:
+                    type: string
+                    description: 图片的base64字符流
+                    example: iVBORw0KGgoAAAANSUhEUgAAA0oAAAJUCAIAAACkE0HlAAAACXBIWXMAAA7EAAAOxAGVKw4bAAByT0lEQVR4nOzdeTxV6
+                  image_scale:
+                    type: number
+                    format: float
+                    description: 返回的图片的缩放比例
+                    example: 2.0
+                  image_type:
+                    type: string
+                    description: 返回的图片的格式
+                    example: jpeg
+    return_of_customize:
+      type: object
+      properties:
+        result:
+          type: object
+          properties:
+            pages_count:
+              type: integer
+              description: 输入数据/文档包含的页面总数
+              example: 5
+            keys_count:
+              type: integer
+              description: 单次请求传入的键名数量
+              example: 2
+            item_list:
+              type: array
+              items:
+                type: object
+                required:
+                  - key
+                  - value
+                  - score
+                  - nonscore
+                  - candidates
+                properties:
+                  key:
+                    type: string
+                    description: 用户自定义的单个键名
+                    example: 合同编号
+                  value:
+                    type: string
+                    description: 从输入数据中提取的键值
+                    example: 9012
+                  score:
+                    type: number
+                    description: 键值对置信度分数
+                    example: 12.36
+                  nonscore:
+                    type: number
+                    description: 未匹配到值的分数
+                    example: -3.96
+                  candidates:
+                    $ref: "#/components/schemas/itemCandidates"
+
